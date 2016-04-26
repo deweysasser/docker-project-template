@@ -1,0 +1,104 @@
+#!/bin/bash
+
+# Purpose:  Create a hashed port (based on JOB_NAME or other variable)
+
+
+set -e
+set -u
+
+declare -a environment
+declare -a ports
+
+usage() {
+    cat <<EOF
+usage: $0 [-help] [-hash HASHSTRING] (PORT|NAME=VALUE)+ [COMMAND]
+
+Will create a hashed port for each listed PORT, based on either the
+given HASHSTRING, the JOB_NAME or the name of the current working
+directory.
+
+Then, if COMMAND is given, will run the command in an environment
+where PORT_<portnumber> is set to the proper port numbers.
+
+If COMMAND is not given, prints appropriate "export" statements to set
+the environment variables in BASH syntax.
+
+NAME=VALUE statements are passed through as environment settings like
+the 'env' command.
+
+EOF
+}
+
+abs() {
+    if [ $1 -lt 0 ] ; then
+	echo $(( - $1 ))
+    else
+	echo $1
+    fi
+}
+
+hashvalue() {
+    port="$1"
+    shift
+    
+    hexHash=$(echo -n "${value}" | md5sum | awk '{print $1}')
+    decHash=$(( 16#$hexHash ))
+    #echo $(( $decHash ))
+    
+    hashedPort=$(( $port + $(abs $decHash) % 1000 ))
+    
+    echo $hashedPort
+}
+
+
+# Parse the command line
+while [ -n "$*"  ] ; do
+    case $1 in
+	-hash) value="$2"; shift;;
+	-help|-h|-?) usage; shift;;
+	-*) usage; exit 1;;
+	--) shift; break;;
+	[0-9]*) ports+=("$1");;
+	*=*) environment+=("$1");;
+	*) break;;
+    esac
+    shift;
+done
+
+# Now calculate the real hash value
+if [ -n "${value:-}" ] ; then
+    value=$(echo $value)
+else
+    value=${JOB_NAME:-$(basename $(pwd))}
+fi
+
+if [ -z "${ports[*]:-}${environment[*]:-}" ] ; then
+    usage
+    exit 1
+fi
+
+# export all the PORT_ variables
+for port in "${ports[@]:-}"; do
+    export PORT_$port=$(hashvalue $port)
+done
+
+# and export all the other environment variables
+for env in "${environment[@]:-}"; do
+    if [ -n "$env" ] ; then
+	eval "export '$env'"
+    fi
+done
+
+
+if [ -n "$*" ] ; then
+    exec "$@"
+else
+    for port in ${ports[@]}; do
+	echo export PORT_$port=\'$(hashvalue $port)\'
+    done
+    for env in "${environment[@]:-}"; do
+	if [ -n "$env" ] ; then
+	    echo "$env"
+	fi
+    done | sed -E -e "s/([a-zA-Z_]+)=(.*)/export \1='\2'/"
+fi
