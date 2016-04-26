@@ -1,0 +1,4 @@
+container:
+  build: source
+  ports:
+    - "8000:80"
