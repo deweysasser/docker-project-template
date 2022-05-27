@@ -1,4 +1,4 @@
-FROM nginx:alpine
+FROM nginx:1.22.0-alpine
 
 RUN echo "Hello There" >> /usr/share/nginx/html/index.html
 RUN ln -s /bin/true /root/test
